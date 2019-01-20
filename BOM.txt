@@ -1,0 +1,10 @@
+Adafruit
+Feather M0 Basic Proto https://www.adafruit.com/product/2772
+Ultimate GPS FeatherWing https://www.adafruit.com/product/3133
+TFT FeatherWing 2.4” https://www.adafruit.com/product/3315 
+2500mA LiPo https://www.adafruit.com/product/328
+Extra-long breakaway headers https://www.adafruit.com/product/400
+
+Misc. hardware
+(4) 2.5mm X 6mm Socket Head Screws (1 Pack DU-BRO 2116)
+(8) 2.5MM X 15MM Socket Head Screws (2 Packs DU-BRO 2119)
