@@ -2,7 +2,7 @@
 #include <Adafruit_GPS.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
-#include "Adafruit_ILI9341.h" // Hardware-specific library
+#include "Adafruit_ILI9341.h"
 #include <Adafruit_STMPE610.h>
 #include <Adafruit_ImageReader.h>
 #include <Wire.h>
@@ -13,18 +13,21 @@
 #include <Fonts/FreeSans12pt7b.h>
 
 #define mySerial Serial1
+#define SD_CS    5
 #define STMPE_CS 6
 #define TFT_CS   9
 #define TFT_DC   10
-#define SD_CS    5
-#define TS_MINX 150
+#define LITE_PIN 11 // Backlight pin
+#define TS_MINX 150 // Raw touchscreen coordinates
 #define TS_MINY 130
 #define TS_MAXX 3800
 #define TS_MAXY 4000
-#define ONEPPM 1.0e-6
-#define BG_COLOR 0xB5B6
+#define ONEPPM 1.0e-6 //For predictions
+#define BG_COLOR 0xB5B6 // Color scheme, more to add
 #define DOWNLINK_COLOR 0x0C42
 #define UPLINK_COLOR 0x8801
+#define MIN_BRIGHTNESS 8 // Backlight dimming control
+#define MAX_BRIGHTNESS 168
 
 typedef enum{
     MAIN_SCREEN = 0,
@@ -50,9 +53,9 @@ double bestLat, bestLon;
 
 ScreenType currentScreen = SAT_SCREEN;
 
-String callSign = "W8LID / VE6LID";
-String lastDate = " ";
-String lastTime = " ";
+String callSign = "W8LID / VE6LID"; // Change your call sign here on the main screen
+String lastDate = " "; // All if these strings are used for screen refreshing
+String lastTime = " "; // We get less flicker from only refreshing what we have to
 String lastGrid = " ";
 String lastLat = " ";
 String lastLon = " ";
@@ -68,23 +71,22 @@ String downlinkMode = " ";
 String description = " ";
 String lastDescription = " ";
 
-unsigned char *converted;    // holds the converted freq
+unsigned char *converted; // holds the converted freq
 
-unsigned int foundSats = 0;
-unsigned int satIndex = 0;
-unsigned int backlightPin = 11;
+unsigned int foundSats = 0; // Number of lines found in Doppler.SQF
+unsigned int satIndex = 0; // Current satellite selected
 
-unsigned long screenTimer;
+unsigned long screenTimer; // Dim screen when not touched
 unsigned long screenTimeout = (30 * 1000);
-unsigned long refreshTimer;
+unsigned long refreshTimer; // Update view timer
 unsigned long refreshTimeout = 500;
-unsigned long downlinkBaseFreq;
+unsigned long downlinkBaseFreq; // Frequencies at sat
 unsigned long uplinkBaseFreq;
 
 void setup()
 {
     // Screen brightness control
-    pinMode(backlightPin, OUTPUT);
+    pinMode(LITE_PIN, OUTPUT);
     wakeScreen();
     
     // Init GPS
@@ -122,12 +124,14 @@ void loop()
     
     // Check for touch
     getSingleTouch();
-    
+
+    // Screen dim timer
     if (millis() - screenTimer >= screenTimeout && !screenIsDim)
     {
         dimScreen();
     }
 
+    // Update views
     if (millis() - refreshTimer >= refreshTimeout)
     {
         updateLocation();
@@ -139,16 +143,16 @@ void loop()
 ////   Hardware Control   /////
 ///////////////////////////////
 void wakeScreen()
-{
+{   // Jump right to full brightness, we want to use it now
     screenIsDim = false;
     screenTimer = millis();
-    analogWrite(11,168);
+    analogWrite(11, MAX_BRIGHTNESS);
 }
 
 void dimScreen()
-{
+{   // Smooth dim for a nice effect, consider getting rid of delay() at some point
     screenIsDim = true;
-    for(int i = 168; i > 8; i--)
+    for(int i = MAX_BRIGHTNESS; i > MIN_BRIGHTNESS; i--)
     {
         analogWrite(11,i);
         delay(1);
@@ -163,12 +167,12 @@ void getSingleTouch()
     {
         p = touch.getPoint();
         
-        if(!wasTouched && !screenIsDim)
-        {
+        if(!wasTouched && !screenIsDim) // Ensure we only fire once per touch and never
+        {                               // when the screen is dim.
             int x = map(p.x, TS_MINX, TS_MAXX, 0, tft.height());
             int y = map(p.y, TS_MINY, TS_MAXY, 0, tft.width());
             switch(currentScreen)
-            {
+            {    // Screen specific actions
                 case MAIN_SCREEN:
                 {
                     if(x >= 80 && x <= 140)
@@ -226,14 +230,14 @@ void getSingleTouch()
             }
             
         }
-        wakeScreen();
+        wakeScreen(); // Reset the screen timer
         wasTouched = true;
     }
     else
     {
         if(wasTouched && !touch.touched())
         {
-            wasTouched = false;
+            wasTouched = false; // We're ready for a new touch
         }
     }
 }
@@ -244,18 +248,23 @@ void getSingleTouch()
 
 void showMainScreen()
 {
-    refreshTimeout = 1000;
+    refreshTimeout = 1000; // Don't really need to update often
     currentScreen = MAIN_SCREEN;
+
+    // Load a background image if available, get BG color if not.
+    ImageReturnCode stat = reader.drawBMP("backgnd.bmp", tft, 100, 80);
+    if(stat != IMAGE_SUCCESS)
+    {
+        tft.fillScreen(BG_COLOR);
+    }
     
-    tft.fillScreen(BG_COLOR);
-    
-    int16_t  x1, y1;
+    int16_t  x1, y1; // Text size for centering
     uint16_t w, h;
-    
+
     tft.setFont(&FreeSansBold18pt7b);
     
     tft.getTextBounds(string2char(callSign), 0, 0, &x1, &y1, &w, &h);
-    int cursorStart = (tft.width() / 2) - (w / 2);
+    int cursorStart = (tft.width() / 2) - (w / 2); // Centered text
     tft.setCursor(cursorStart, 50);
     tft.setTextColor(ILI9341_BLACK);
     tft.println(callSign);
@@ -474,9 +483,7 @@ void updateGridScreen()
 void updateClockScreen()
 {
     // Build date string
-    String dateString = "";
-    dateString += "20";
-    dateString += GPS.year;
+    String dateString = (2000 + GPS.year);
     dateString += "/";
     
     if(GPS.month < 10)
